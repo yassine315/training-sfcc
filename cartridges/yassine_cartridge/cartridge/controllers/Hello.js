@@ -1,47 +1,71 @@
 'use strict';
 
 /**
- * @namespace Default
+ * @namespace Login
  */
 
 var server = require('server');
-var cache = require('*/cartridge/scripts/middleware/cache');
-var consentTracking = require('*/cartridge/scripts/middleware/consentTracking');
-var pageMetaData = require('*/cartridge/scripts/middleware/pageMetaData');
 
-/** when sitepath is defined in the site aliases from business manager, homepage will be rendered directly */
+var csrfProtection = require('*/cartridge/scripts/middleware/csrf');
+var consentTracking = require('*/cartridge/scripts/middleware/consentTracking');
+
 /**
- * Default-Start : This end point is the root of the site, when opening from the BM this is the end point executed
- * @name Base/Default-Start
+ * Login-Show : This endpoint is called to load the login page
+ * @name Base/Login-Show
  * @function
- * @memberof Default
+ * @memberof Login
  * @param {middleware} - consentTracking.consent
- * @param {middleware} - cache.applyDefaultCache
- * @param {category} - non-sensitive
+ * @param {middleware} - server.middleware.https
+ * @param {middleware} - csrfProtection.generateToken
+ * @param {querystringparameter} - rurl - Redirect URL
+ * @param {querystringparameter} - action - Action on submit of Login Form
+ * @param {category} - sensitive
  * @param {renders} - isml
  * @param {serverfunction} - get
  */
-server.get('Start', consentTracking.consent, cache.applyDefaultCache, function (req, res, next) {
-    var Site = require('dw/system/Site');
-    var PageMgr = require('dw/experience/PageMgr');
-    var pageMetaHelper = require('*/cartridge/scripts/helpers/pageMetaHelper');
+server.get(
+    'test',
+    consentTracking.consent,
+    server.middleware.https,
+    csrfProtection.generateToken,
+    function (req, res, next) {
+        var URLUtils = require('dw/web/URLUtils');
+        var Resource = require('dw/web/Resource');
 
-    pageMetaHelper.setPageMetaTags(req.pageMetaData, Site.current);
+        var target = req.querystring.rurl || 1;
 
-    var page = PageMgr.getPage('homepage');
+        var rememberMe = false;
+        var userName = '';
+        var actionUrl = URLUtils.url('Account-Login', 'rurl', target);
+        var createAccountUrl = URLUtils.url('Account-SubmitRegistration', 'rurl', target).relative().toString();
+        var navTabValue = req.querystring.action;
 
-    if (page && page.isVisible()) {
-        res.page('homepage');
-    } else {
-        res.render('home/homePage');
+        if (req.currentCustomer.credentials) {
+            rememberMe = true;
+            userName = req.currentCustomer.credentials.username;
+        }
+
+        var breadcrumbs = [
+            {
+                htmlValue: Resource.msg('global.home', 'common', null),
+                url: URLUtils.home().toString()
+            }
+        ];
+
+        var profileForm = server.forms.getForm('profile');
+        profileForm.clear();
+
+        res.render('/account/login', {
+            navTabValue: navTabValue || 'login',
+            rememberMe: rememberMe,
+            userName: userName,
+            actionUrl: actionUrl,
+            profileForm: profileForm,
+            breadcrumbs: breadcrumbs,
+            oAuthReentryEndpoint: 1,
+            createAccountUrl: createAccountUrl
+        });
+
+        next();
     }
-    next();
-}, pageMetaData.computedPageMetaData);
-
-/** Renders the maintenance page when a site has been set to "Maintenance mode" */
-server.get('Offline', cache.applyDefaultCache, function (req, res, next) {
-    res.render('siteOffline');
-    next();
-});
-
-module.exports = server.exports();
+);
